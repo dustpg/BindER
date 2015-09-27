@@ -24,16 +24,16 @@ auto binder_mruby(mrb_state* mruby) {
     }
 }
 ```
-- more codes, refer to file under folder `test`
+- more codes, refer to files under folder `test`
 
 ## Performance(In MSC)
-[when noinline](./__resource/noinline_debug_vs2015.png)  
-[when inline](./__resource/inline_release_vs2015.png)  
+[when noinline](./__resource/noinline_debug_vs2015.png) [when inline](./__resource/inline_release_vs2015.png)  
 
 ## Custom Type Support
   - search `ADD YOUR OWN TYPE HERE`
   - add your own type
-  - for example with `std::string`
+  - for example with `std::string`  
+  
   ```cpp
     // mruby arg to c++: for std::string
     template<> struct ruby_arg<std::string> {
