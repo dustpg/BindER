@@ -263,11 +263,23 @@ namespace BindER {
         mruby_binder(mrb_state* state) noexcept : mstate(state) { assert(mstate && "bad argument"); };
         // copy ctor
         mruby_binder(const mruby_binder& b) noexcept : mstate(b.mstate) { assert(mstate && "bad argument"); };
+        // bind module
+        template<typename T>
+        inline auto bind_module (const char* module_name) noexcept {
+            return this->bind_module<T>(module_name, mstate->kernel_module);
+        }
+        // bind module with outer
+        template<typename T>
+        inline auto bind_module(const char* module_name, RClass* outer) noexcept {
+            // define class
+            auto cla = ::mrb_define_module_under(mstate, outer, module_name);
+            return class_binder<T>(mstate, cla);
+        }
         // bind class
         template<typename T> inline auto bind_class(const char* class_name, T ctor) noexcept {
             return this->bind_class(class_name, ctor, mstate->kernel_module, mstate->object_class);
         }
-        // bind class with outer and super and deleter
+        // bind class with outer and super
         template<typename T> inline auto bind_class(const char* class_name, T ctor, RClass* outer, RClass* super) noexcept {
 #ifdef _DEBUG
             static bool isfirst = true;

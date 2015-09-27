@@ -46,21 +46,33 @@ p a.bar 1,2,3
 a = Foo2.new "sad", 120, 0.0, 0, 1, 3.1416
 )rb";
 
+struct Graphics {
+    static auto& get_singleton() { static Graphics s; return s; }
+    static auto sad(const char* a = "") { return 0.f; }
+    auto mysad() { return a; }
+    uint32_t a = 1234321;
+};
+
 // call binder
 auto binder_mruby(mrb_state* mruby) {
     int random_data = 0;
     auto binder = BindER::ruby_binder(mruby);
     {
+        auto cbinder = binder.bind_module<Graphics>("Graphics");
+        cbinder.bind("sad", []() { return Graphics::sad(); });
+        cbinder.bind("mysad", []() { return Graphics::get_singleton().mysad(); });
+    }
+    {
         // ctor
-        auto classbinder = binder.bind_class("Foo", [](int a, int b) {
+        auto cbinder = binder.bind_class("Foo", [](int a, int b) {
             return new(std::nothrow) Foo(a+b);
         });
         // first argument is binded-class pointer/reference -> instance-method
-        classbinder.bind("bar", [](Foo& obj, int a, int b, int c) noexcept { return obj.bar(a, b, c); });
+        cbinder.bind("bar", [](Foo& obj, int a, int b, int c) noexcept { return obj.bar(a, b, c); });
         // first argument not binded-class pointer -> class-method
-        classbinder.bind("baz", [](int b) noexcept { return Foo::baz(b, 5, 7); });
+        cbinder.bind("baz", [](int b) noexcept { return Foo::baz(b, 5, 7); });
         // limited lambda working(do not capture value-passed-object because of static lambda)
-        classbinder.bind("baa", [&]() noexcept { return Foo::baz(random_data, 5, 7); });
+        cbinder.bind("baa", [&]() noexcept { return Foo::baz(random_data, 5, 7); });
     }
     {
         auto classbinder = binder.bind_class("Foo2", [](const char* v, int32_t a, float b, int32_t c, int32_t d, float f) {
