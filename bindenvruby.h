@@ -61,7 +61,7 @@ namespace BindER {
     // ruby arg to c++: for void
     template<> struct ruby_arg<void> {
         // get mruby
-        static auto get(const mrb_value& v) noexcept { return; }
+        static auto get(const mrb_value& /*value*/) noexcept { return; }
         // set mruby
         template<typename Lam>
         static auto set(mrb_state*, Lam lam) noexcept { lam(); return ::mrb_nil_value(); }
