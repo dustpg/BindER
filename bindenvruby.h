@@ -18,6 +18,23 @@
 
 // binder namespace
 namespace BindER { 
+    // helper for data type
+    template<typename T> struct data_type_helper {
+        // get uni data type
+        static auto& get_type() noexcept {
+            static mrb_data_type datatype;
+            return datatype;
+        }
+        // init it
+        static void set_type(const char* name) noexcept {
+            data_type_helper<T>::get_type() = {
+                name, [](mrb_state* mrb, void* ptr) { 
+                    (void)mrb; 
+                    delete static_cast<T*>(ptr);
+                }
+            };
+        }
+    };
     // to match ruby-style, use low-case char
     // type helper with c++ tuple
     template <typename T> struct type_helper : public type_helper<decltype(&T::operator())> {};
@@ -40,7 +57,7 @@ namespace BindER {
             constexpr size_t INDEX = TypeHelper::arity - ArgNum;
             using parma_type = TypeHelper::arg<INDEX>::type;
             return call_chain<NEXT>::call<TypeHelper>(
-                lam, list, args..., ruby_arg<parma_type>::get(list[INDEX])
+                lam, list, args..., ruby_arg<parma_type>::get(list[INDEX-1])
                 );
         }
     };
@@ -130,6 +147,16 @@ namespace BindER {
         template<typename Lam>
         static auto set(mrb_state* ms, Lam lam) noexcept { return ::mrb_cptr_value(ms, lam()); }
     };
+#if 0
+    // mruby arg to c++: for void*
+    template<> struct ruby_arg<YOURTYPE*> {
+        // get
+        static auto get(const mrb_value& v) noexcept { return reinterpret_cast<YOURTYPE*>(DATA_PTR(v));; }
+        // set mruby
+        template<typename Lam>
+        static auto set(mrb_state* ms, Lam lam) noexcept { return ::mrb_data_init(ms, lam(), &data_type_helper<YOURTYPE>::get_type()); }
+    };
+#endif
     // -----------------------------------
     //      ADD YOUR OWN TYPE HERE        
     // -----------------------------------
@@ -198,6 +225,7 @@ namespace BindER {
                         auto& obj = *reinterpret_cast<CppClass*>(DATA_PTR(self));
                         mrb_value* args; int narg;
                         ::mrb_get_args(mrb, "*", &args, &narg);
+                        auto b = traits::arity;
                         // no arg call
                         auto no_arg_lambda = [args, &obj]() noexcept {
                             return call_chain<traits::arity-1>::call<traits>(real_method, args, obj);
@@ -293,15 +321,12 @@ namespace BindER {
             using traits = type_helper<T>;
             using class_type = type_helper_ptr<traits::result_type>::type;
             // data type
-            static mrb_data_type this_data_type = {
-                class_name,
-                [](mrb_state *mrb, void *ptr) { (void)mrb; delete static_cast<class_type*>(ptr); }
-            };
+            data_type_helper<class_type>::set_type(class_name);
             // real ctor lambda to avoid capture
             static const auto real_ctor(ctor);
             // define initialize method
             auto initialize_this = [](mrb_state *mrb, mrb_value self) noexcept {
-                DATA_TYPE(self) = &this_data_type;
+                DATA_TYPE(self) = &data_type_helper<class_type>::get_type();
                 mrb_value* args; int narg;
                 ::mrb_get_args(mrb, "*", &args, &narg);
                 //assert(narg == traits::arity && "bad arguments");
