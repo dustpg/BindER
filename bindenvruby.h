@@ -57,7 +57,7 @@ namespace BindER {
             constexpr size_t INDEX = TypeHelper::arity - ArgNum;
             using parma_type = TypeHelper::arg<INDEX>::type;
             return call_chain<NEXT>::call<TypeHelper>(
-                lam, list, args..., ruby_arg<parma_type>::get(list[INDEX-1])
+                lam, list, args..., ruby_arg<parma_type>::get(list[INDEX])
                 );
         }
     };
@@ -228,7 +228,7 @@ namespace BindER {
                         auto b = traits::arity;
                         // no arg call
                         auto no_arg_lambda = [args, &obj]() noexcept {
-                            return call_chain<traits::arity-1>::call<traits>(real_method, args, obj);
+                            return call_chain<traits::arity-1>::call<traits>(real_method, args-1, obj);
                         };
                         return ruby_arg<type_helper<T>::result_type>::set(mrb, no_arg_lambda);
                     }, MRB_ARGS_REQ(traits::arity));
@@ -250,7 +250,7 @@ namespace BindER {
                         ::mrb_get_args(mrb, "*", &args, &narg);
                         // no arg call
                         auto no_arg_lambda = [args, obj]() noexcept {
-                            return call_chain<traits::arity-1>::call<traits>(real_method, args, obj);
+                            return call_chain<traits::arity-1>::call<traits>(real_method, args-1, obj);
                         };
                         return ruby_arg<type_helper<T>::result_type>::set(mrb, no_arg_lambda);
                     }, MRB_ARGS_REQ(traits::arity));
