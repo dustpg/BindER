@@ -17,22 +17,36 @@
 #include <tuple>
 
 // binder namespace
-namespace BindER { 
+namespace BindER {
+    // return original parameter/argument
+    template<size_t id> struct original_parameter {};
+    // helper for data object alloc
+    template<typename T> 
+    auto mrb_data_object_alloc_helper(mrb_state* ms, void*data) noexcept {
+        return ::mrb_data_object_alloc(ms, 
+            data_type_helper<T>::get_type().classr,
+            data,
+            &data_type_helper<T>::get_type().mrb_dt
+        );
+    }
     // helper for data type
     template<typename T> struct data_type_helper {
+        // data_type
+        struct data_type { mrb_data_type mrb_dt; RClass* classr; };
         // get uni data type
         static auto& get_type() noexcept {
-            static mrb_data_type datatype;
+            static data_type datatype;
             return datatype;
         }
         // init it
-        static void set_type(const char* name) noexcept {
-            data_type_helper<T>::get_type() = {
+        static void set_type(const char* name, RClass* classr) noexcept {
+            data_type_helper<T>::get_type().mrb_dt = {
                 name, [](mrb_state* mrb, void* ptr) { 
                     (void)mrb; 
                     delete static_cast<T*>(ptr);
                 }
             };
+            data_type_helper<T>::get_type().classr = classr;
         }
     };
     // to match ruby-style, use low-case char
@@ -57,7 +71,7 @@ namespace BindER {
             constexpr size_t INDEX = TypeHelper::arity - ArgNum;
             using parma_type = TypeHelper::arg<INDEX>::type;
             return call_chain<NEXT>::call<TypeHelper>(
-                lam, list, args..., ruby_arg<parma_type>::get(list[INDEX])
+                lam, list, args..., std::move(ruby_arg<parma_type>::get(list[INDEX]))
                 );
         }
     };
@@ -81,7 +95,7 @@ namespace BindER {
         static auto get(const mrb_value& /*value*/) noexcept { return; }
         // set mruby
         template<typename Lam>
-        static auto set(mrb_state*, Lam lam) noexcept { lam(); return ::mrb_nil_value(); }
+        static auto set(mrb_state*, Lam lam, const mrb_value* org_arg) noexcept { lam(); return ::mrb_nil_value(); }
     };
     // ruby arg to c++: for bool
     template<> struct ruby_arg<bool> {
@@ -89,7 +103,9 @@ namespace BindER {
         static auto get(const mrb_value& v) noexcept { return mrb_test(v); }
         // set mruby
         template<typename Lam>
-        static auto set(mrb_state*, Lam lam) noexcept { return ::mrb_bool_value(!!(lam())); }
+        static auto set(mrb_state*, Lam lam, const mrb_value* org_arg) noexcept { 
+            return ::mrb_bool_value(!!(lam())); 
+        }
     };
     // mruby arg to c++: for float
     template<> struct ruby_arg<float> {
@@ -99,7 +115,9 @@ namespace BindER {
         }
         // set mruby
         template<typename Lam>
-        static auto set(mrb_state* ms, Lam lam) noexcept { return ::mrb_float_value(ms, static_cast<float>(lam())); }
+        static auto set(mrb_state* ms, Lam lam, const mrb_value* org_arg) noexcept {
+            return ::mrb_float_value(ms, static_cast<float>(lam()));
+        }
     };
     // mruby arg to c++: for float
     template<> struct ruby_arg<double> {
@@ -109,7 +127,9 @@ namespace BindER {
         }
         // set mruby
         template<typename Lam>
-        static auto set(mrb_state* ms, Lam lam) noexcept { return ::mrb_float_value(ms, static_cast<double>(lam())); }
+        static auto set(mrb_state* ms, Lam lam, const mrb_value* org_arg) noexcept {
+            return ::mrb_float_value(ms, static_cast<double>(lam())); 
+        }
     };
     // mruby arg to c++: for int32_t
     template<> struct ruby_arg<int32_t> {
@@ -119,7 +139,9 @@ namespace BindER {
         }
         // set mruby
         template<typename Lam>
-        static auto set(mrb_state*, Lam lam) noexcept { return ::mrb_fixnum_value(lam()); }
+        static auto set(mrb_state*, Lam lam, const mrb_value* org_arg) noexcept { 
+            return ::mrb_fixnum_value(lam()); 
+        }
     };
     // mruby arg to c++: for uint32_t
     template<> struct ruby_arg<uint32_t> {
@@ -129,7 +151,9 @@ namespace BindER {
         }
         // set mruby
         template<typename Lam>
-        static auto set(mrb_state*, Lam lam) noexcept { return ::mrb_fixnum_value(static_cast<uint32_t>(lam())); }
+        static auto set(mrb_state*, Lam lam, const mrb_value* org_arg) noexcept { 
+            return ::mrb_fixnum_value(static_cast<uint32_t>(lam())); 
+        }
     };
     // mruby arg to c++: for const char*
     template<> struct ruby_arg<const char*> {
@@ -137,7 +161,9 @@ namespace BindER {
         static auto get(const mrb_value& v) noexcept { return RSTRING_PTR(v); }
         // set mruby
         template<typename Lam>
-        static auto set(mrb_state* ms, Lam lam) noexcept { return ::mrb_str_new_cstr(ms, lam()); }
+        static auto set(mrb_state* ms, Lam lam, const mrb_value* org_arg) noexcept { 
+            return ::mrb_str_new_cstr(ms, lam());
+        }
     };
     // mruby arg to c++: for void*
     template<> struct ruby_arg<void*> {
@@ -145,18 +171,20 @@ namespace BindER {
         static auto get(const mrb_value& v) noexcept { return mrb_cptr(v); }
         // set mruby
         template<typename Lam>
-        static auto set(mrb_state* ms, Lam lam) noexcept { return ::mrb_cptr_value(ms, lam()); }
+        static auto set(mrb_state* ms, Lam lam, const mrb_value* org_arg) noexcept { 
+            return ::mrb_cptr_value(ms, lam());
+        }
     };
-#if 0
     // mruby arg to c++: for void*
-    template<> struct ruby_arg<YOURTYPE*> {
+    template<size_t id> struct ruby_arg<original_parameter<id>> {
         // get
-        static auto get(const mrb_value& v) noexcept { return reinterpret_cast<YOURTYPE*>(DATA_PTR(v));; }
+        static auto get(const mrb_value& v) noexcept { static_assert(false, "error"); }
         // set mruby
         template<typename Lam>
-        static auto set(mrb_state* ms, Lam lam) noexcept { return ::mrb_data_init(ms, lam(), &data_type_helper<YOURTYPE>::get_type()); }
+        static auto set(mrb_state* ms, Lam lam, const mrb_value* org_arg) noexcept { 
+            mrb_value v = org_arg[id]; return v;
+        }
     };
-#endif
     // -----------------------------------
     //      ADD YOUR OWN TYPE HERE        
     // -----------------------------------
@@ -185,7 +213,7 @@ namespace BindER {
                     // define
                     ::mrb_define_class_method(binder.get_mruby(), binder.get_class(), method_name, [](mrb_state* mrb, mrb_value self) noexcept {
                         (void)self;
-                        return ruby_arg<type_helper<T>::result_type>::set(mrb, real_method);
+                        return ruby_arg<type_helper<T>::result_type>::set(mrb, real_method, nullptr);
                     }, MRB_ARGS_NONE());
                 }
             };
@@ -207,30 +235,7 @@ namespace BindER {
                         auto no_arg_lambda = [args]() noexcept {
                             return call_chain<traits::arity>::call<traits>(real_method, args);
                         };
-                        return ruby_arg<type_helper<T>::result_type>::set(mrb, no_arg_lambda);
-                    }, MRB_ARGS_REQ(traits::arity));
-                }
-            };
-            // method helper ex: for object-ref
-            template<> struct method_helper_ex<CppClass&> {
-                // bind
-                template<typename T> 
-                static inline auto bind(const class_binder<CppClass>& binder, const char* method_name, T method) noexcept {
-                    // no-arg -> [rb]class-method call [cpp]static-class-function
-                    // real ctor lambda to avoid capture
-                    static const auto real_method(method);
-                    using traits = type_helper<T>;
-                    // define
-                    ::mrb_define_method(binder.get_mruby(), binder.get_class(), method_name, [](mrb_state* mrb, mrb_value self) noexcept {
-                        auto& obj = *reinterpret_cast<CppClass*>(DATA_PTR(self));
-                        mrb_value* args; int narg;
-                        ::mrb_get_args(mrb, "*", &args, &narg);
-                        auto b = traits::arity;
-                        // no arg call
-                        auto no_arg_lambda = [args, &obj]() noexcept {
-                            return call_chain<traits::arity-1>::call<traits>(real_method, args-1, obj);
-                        };
-                        return ruby_arg<type_helper<T>::result_type>::set(mrb, no_arg_lambda);
+                        return ruby_arg<type_helper<T>::result_type>::set(mrb, no_arg_lambda, args);
                     }, MRB_ARGS_REQ(traits::arity));
                 }
             };
@@ -252,23 +257,21 @@ namespace BindER {
                         auto no_arg_lambda = [args, obj]() noexcept {
                             return call_chain<traits::arity-1>::call<traits>(real_method, args-1, obj);
                         };
-                        return ruby_arg<type_helper<T>::result_type>::set(mrb, no_arg_lambda);
+                        return ruby_arg<type_helper<T>::result_type>::set(mrb, no_arg_lambda, args);
                     }, MRB_ARGS_REQ(traits::arity));
                 }
             };
-            // method helper ex: for const object-ref
-            template<> struct method_helper_ex<const CppClass&> : method_helper_ex<CppClass&> { };
-            // method helper ex: for const object-ref
+            // method helper ex: for const object-pointer
             template<> struct method_helper_ex<const CppClass*> : method_helper_ex<CppClass*> { };
         public:
             // get class
-            auto get_class() const noexcept { return classr; }
+            static inline auto get_class() noexcept { return data_type_helper<CppClass>::get_type().classr; }
             // get mruby
             auto get_mruby() const noexcept { return mstate; }
             // ctor
-            class_binder(mrb_state* s, RClass* c) noexcept : mstate(s), classr(c) { assert(mstate && classr && "bad arguments"); };
+            class_binder(mrb_state* s) noexcept : mstate(s) { assert(mstate && "bad argument"); };
             // copy ctor
-            class_binder(const class_binder<CppClass>& b) noexcept : mstate(b.mstate), classr(b.classr) { assert(mstate && classr && "bad arguments"); };
+            class_binder(const class_binder<CppClass>& b) noexcept : mstate(b.mstate) { assert(mstate && "bad argument"); };
             // bind
             template<typename T> auto bind(const char* method_name, T method) {
 #ifdef _DEBUG
@@ -283,8 +286,6 @@ namespace BindER {
         private:
             // state of mruby
             mrb_state*      mstate = nullptr;
-            // class ruby
-            RClass*         classr = nullptr;
         };
     public:
         // ctor
@@ -321,12 +322,12 @@ namespace BindER {
             using traits = type_helper<T>;
             using class_type = type_helper_ptr<traits::result_type>::type;
             // data type
-            data_type_helper<class_type>::set_type(class_name);
+            data_type_helper<class_type>::set_type(class_name, cla);
             // real ctor lambda to avoid capture
             static const auto real_ctor(ctor);
             // define initialize method
             auto initialize_this = [](mrb_state *mrb, mrb_value self) noexcept {
-                DATA_TYPE(self) = &data_type_helper<class_type>::get_type();
+                DATA_TYPE(self) = &data_type_helper<class_type>::get_type().mrb_dt;
                 mrb_value* args; int narg;
                 ::mrb_get_args(mrb, "*", &args, &narg);
                 //assert(narg == traits::arity && "bad arguments");
@@ -334,7 +335,7 @@ namespace BindER {
                 return self;
             };
             ::mrb_define_method(mstate, cla, "initialize", initialize_this, MRB_ARGS_REQ(traits::arity));
-            return class_binder<class_type>(mstate, cla);
+            return class_binder<class_type>(mstate);
         }
     private:
         // state of mruby

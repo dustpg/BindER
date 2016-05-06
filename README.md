@@ -12,15 +12,19 @@ auto binder_mruby(mrb_state* mruby) {
     auto binder = BindER::ruby_binder(mruby);
     {
         // ctor
-        auto classbinder = binder.bind_class("Foo", [](int a, int b) {
+        auto foobinder = binder.bind_class("Foo", [](int a, int b) {
             return new(std::nothrow) Foo(a+b);
         });
-        // first argument is binded-class pointer/reference -> instance-method
-        classbinder.bind("bar", [](Foo& obj, int a, int b, int c) noexcept { return obj.bar(a, b, c); });
-        // first argument not binded-class pointer -> class-method
-        classbinder.bind("baz", [](int b) noexcept { return Foo::baz(b, 5, 7); });
-        // limited lambda working(do not capture value-passed-object because of static lambda)
-        classbinder.bind("baa", [&]() noexcept { return Foo::baz(random_data, 5, 7); });
+        // first argument is binded-class pointer -> instance-method
+        foobinder.bind("bar", [](Foo* obj, int a, int b, int c) noexcept { return obj->bar(a, b, c); });
+        // first argument NOT binded-class pointer -> class-method
+        foobinder.bind("baz", [](int b) noexcept { return Foo::baz(b, 5, 7); });
+        // limited lambda working(do not capture value-passed-custom-type-object because of static lambda)
+        foobinder.bind("baa", [&]() noexcept { return Foo::baz(random_data, 5, 7); });
+        // // return first parameter given
+        foobinder.bind("foo=", [](Foo* obj, Foo2* f2) noexcept { 
+            obj->set_foo(f2); return BindER::original_parameter<0>();
+        });
     }
 }
 ```
