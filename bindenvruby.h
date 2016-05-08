@@ -21,12 +21,11 @@ namespace BindER {
     // raise helper
     struct raise_helper {
         // raise
-        static auto raisenarg(mrb_state *mrb, int narg, int nparam) {
+        static void raisenarg(mrb_state *mrb, int narg, int nparam) {
             ::mrb_raisef(mrb, E_ARGUMENT_ERROR, "wrong number of arguments (%S for %S)",
                 mrb_fixnum_value(narg),
                 mrb_fixnum_value(nparam)
             );
-            return mrb_nil_value();
         }
     };
     // return original parameter/argument
@@ -243,7 +242,7 @@ namespace BindER {
                         mrb_value* args; int narg;
                         ::mrb_get_args(mrb, "*", &args, &narg);
                         // raise error
-                        if (narg != int(traits::arity)) return raise_helper::raisenarg(mrb, narg, int(traits::arity));
+                        if (narg != int(traits::arity)) raise_helper::raisenarg(mrb, narg, int(traits::arity));
                         // no arg call
                         auto no_arg_lambda = [args]() noexcept {
                             return call_chain<traits::arity>::call<traits>(real_method, args);
@@ -268,7 +267,7 @@ namespace BindER {
                         mrb_value* args; int narg;
                         ::mrb_get_args(mrb, "*", &args, &narg);
                         // raise error
-                        if (narg != int(traits::arity - 1)) return raise_helper::raisenarg(mrb, narg, int(traits::arity - 1));
+                        if (narg != int(traits::arity - 1)) raise_helper::raisenarg(mrb, narg, int(traits::arity - 1));
                         // no arg call
                         auto no_arg_lambda = [args, obj]() noexcept {
                             return call_chain<traits::arity-1>::call<traits>(real_method, args-1, obj);
@@ -347,7 +346,7 @@ namespace BindER {
                 mrb_value* args; int narg;
                 ::mrb_get_args(mrb, "*", &args, &narg);
                 // raise error
-                if (narg != int(traits::arity)) return raise_helper::raisenarg(mrb, narg, int(traits::arity));
+                if (narg != int(traits::arity)) raise_helper::raisenarg(mrb, narg, int(traits::arity));
                 //assert(narg == traits::arity && "bad arguments");
                 DATA_PTR(self) = call_chain<traits::arity>::call<traits>(real_ctor, args);
                 return self;
