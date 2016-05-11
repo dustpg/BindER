@@ -3,6 +3,15 @@
 #ifndef __cplusplus
 #error "C++ Only"
 #endif
+
+#ifndef BINDER_RUBY_TYPE_NOCHECK
+#define BINDER_RUBY_TYPE_CHECK
+#endif
+
+#ifndef BINDER_RUBY_NUMBER_NOCHECK
+#define BINDER_RUBY_NUMBER_CHECK
+#endif
+
 // C
 #include <cassert>
 
@@ -20,13 +29,22 @@
 namespace BindER {
     // raise helper
     struct raise_helper {
+#ifdef BINDER_RUBY_NUMBER_CHECK
         // raise
-        static void raisenarg(mrb_state *mrb, int narg, int nparam) {
-            ::mrb_raisef(mrb, E_ARGUMENT_ERROR, "wrong number of arguments (%S for %S)",
-                mrb_fixnum_value(narg),
-                mrb_fixnum_value(nparam)
-            );
+        template<size_t nparam>
+        static void raisenarg(mrb_state *mrb, int narg) {
+            if (narg != int(nparam)) {
+                ::mrb_raisef(mrb, E_ARGUMENT_ERROR, "wrong number of arguments (%S for %S)",
+                    mrb_fixnum_value(narg),
+                    mrb_fixnum_value(int(nparam))
+                );
+            }
         }
+#else
+        // raise
+        template<size_t> 
+        static void raisenarg(mrb_state *, int) { }
+#endif
     };
     // return original parameter/argument
     template<size_t id> struct original_parameter {};
@@ -74,6 +92,16 @@ namespace BindER {
     };
     // call c++ function
     template<size_t ArgNum> struct call_chain {
+        // check
+        template<typename TypeHelper, typename T, typename RubyArgType, typename... Args>
+        static auto check(T lam, RubyArgType* list, Args&&... args) noexcept { 
+            constexpr size_t NEXT = ArgNum - 1;
+            constexpr size_t INDEX = TypeHelper::arity - ArgNum;
+            using parma_type = TypeHelper::arg<INDEX>::type;
+            return call_chain<NEXT>::check<TypeHelper>(
+                lam, list, std::forward<Args>(args)..., ruby_arg<parma_type>::check(list[INDEX])
+                );
+        }
         // call
         template<typename TypeHelper, typename T, typename RubyArgType, typename... Args>
         static auto call(T lam, RubyArgType* list, Args&&... args) noexcept { 
@@ -86,7 +114,10 @@ namespace BindER {
         }
     };
     // base arg
-    template<> struct call_chain<0> { 
+    template<> struct call_chain<0> {
+        // check
+        template<typename TypeHelper, typename T, typename RubyArgType, typename... Args>
+        static auto check(T lam, RubyArgType*, Args&&...args) noexcept { return lam(std::forward<Args>(args)...); }
         // call
         template<typename TypeHelper, typename T, typename RubyArgType, typename... Args>
         static auto call(T lam, RubyArgType*, Args&&...args) noexcept { return lam(std::forward<Args>(args)...); }
@@ -241,8 +272,8 @@ namespace BindER {
                         (void)self;
                         mrb_value* args; int narg;
                         ::mrb_get_args(mrb, "*", &args, &narg);
-                        // raise error
-                        if (narg != int(traits::arity)) raise_helper::raisenarg(mrb, narg, int(traits::arity));
+                        // raise error for arg number
+                        raise_helper::raisenarg<traits::arity>(mrb, narg);
                         // no arg call
                         auto no_arg_lambda = [args]() noexcept {
                             return call_chain<traits::arity>::call<traits>(real_method, args);
@@ -266,8 +297,8 @@ namespace BindER {
                         auto obj = reinterpret_cast<CppClass*>(DATA_PTR(self));
                         mrb_value* args; int narg;
                         ::mrb_get_args(mrb, "*", &args, &narg);
-                        // raise error
-                        if (narg != int(traits::arity - 1)) raise_helper::raisenarg(mrb, narg, int(traits::arity - 1));
+                        // raise error for arg number
+                        raise_helper::raisenarg<traits::arity - 1>(mrb, narg);
                         // no arg call
                         auto no_arg_lambda = [args, obj]() noexcept {
                             return call_chain<traits::arity-1>::call<traits>(real_method, args-1, obj);
@@ -345,8 +376,8 @@ namespace BindER {
                 DATA_TYPE(self) = &data_type_helper<class_type>::get_type().mrb_dt;
                 mrb_value* args; int narg;
                 ::mrb_get_args(mrb, "*", &args, &narg);
-                // raise error
-                if (narg != int(traits::arity)) raise_helper::raisenarg(mrb, narg, int(traits::arity));
+                // raise error for arg number
+                raise_helper::raisenarg<traits::arity>(mrb, narg);
                 //assert(narg == traits::arity && "bad arguments");
                 DATA_PTR(self) = call_chain<traits::arity>::call<traits>(real_ctor, args);
                 return self;
